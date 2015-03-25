@@ -414,4 +414,4 @@ process.argv.splice(1).forEach(function(val, index, array) {
 });
 
 http.createServer(onRequest).listen(port, ipaddr);
-reportMessage(logLevels.INFO, "Server running on " + ipaddr + ":" + port + " in low-latency mode");
+reportMessage(logLevels.INFO, "Server running on " + ipaddr + ":" + port + " in "+(sendMediaSegmentsFragmented ? "low-latency": "normal")+" mode");
