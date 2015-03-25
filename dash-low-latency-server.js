@@ -366,8 +366,12 @@ var onRequest = function(req, res) {
     		'Server-UTC': ''+getTime() 
 		};
 		res.writeHead(200, head);
-		resetFileParams(parsed_url.pathname.slice(1), true, state.MOOV, res);
-		sendFragmentedFile(res, parsed_url.pathname.slice(1));
+		if (false) {
+			resetFileParams(parsed_url.pathname.slice(1), true, state.MOOV, res);
+			sendFragmentedFile(res, parsed_url.pathname.slice(1));
+		} else {
+			sendFile(res, parsed_url.pathname.slice(1));
+		}
 	}
 }
 
