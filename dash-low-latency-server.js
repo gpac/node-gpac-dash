@@ -19,6 +19,9 @@ var ipaddr = "127.0.0.1";
 var port = 8000;
 var logLevel = 0;
 
+var sendMediaSegmentsFragmented = false;
+var sendInitSegmentsFragmented = false;
+
 var logLevels = {
   INFO: 0,
   DEBUG_BASIC: 1,
@@ -352,7 +355,7 @@ var onRequest = function(req, res) {
 		res.writeHead(200, head);
 		resetFileParams(parsed_url.pathname.slice(1), false, state.NONE);
 		/* TODO: Check if we should send MP4 files as fragmented files or not */
-		if (false) {
+		if (sendInitSegmentsFragmented) {
 		  sendFragmentedFile(res, parsed_url.pathname.slice(1));
 		  /* Sending the final 0-size chunk because the file won't change anymore */
 		  res.end();
@@ -366,7 +369,7 @@ var onRequest = function(req, res) {
     		'Server-UTC': ''+getTime() 
 		};
 		res.writeHead(200, head);
-		if (false) {
+		if (sendMediaSegmentsFragmented) {
 			resetFileParams(parsed_url.pathname.slice(1), true, state.MOOV, res);
 			sendFragmentedFile(res, parsed_url.pathname.slice(1));
 		} else {
