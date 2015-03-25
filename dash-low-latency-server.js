@@ -5,9 +5,12 @@
 function usage() {
 	console.log("node dash-chunked.js [options]");
 	console.log("Basic options");
-	console.log("-log <level>         sets the log level: info (default) | debug-basic | debug-max");
-	console.log("-ip <IP>             IP address of the server (default 127.0.0.1)");
-	console.log("-port <port>         port of the server (default 8000)");
+	console.log("-log <level>           sets the log level: info (default) | debug-basic | debug-max");
+	console.log("-ip <IP>               IP address of the server (default 127.0.0.1)");
+	console.log("-port <port>           port of the server (default 8000)");
+	console.log("-chunk-media-segments  send media segments asap using chunked transfer (default no)");
+	console.log("-segment-marker <4cc>  marker for end of segment (default eods)");
+
 	console.log();
 }
 
@@ -21,7 +24,7 @@ var logLevel = 0;
 
 /* Boolean controlling the sending of segments fragment-by-fragment as HTTP chunks, 
    requires MP4Box or DashCast to use -segment-marker eods */
-var sendMediaSegmentsFragmented = true;
+var sendMediaSegmentsFragmented = false;
 var SEGMENT_MARKER = "eods";
 var sendInitSegmentsFragmented = false;
 
@@ -400,6 +403,10 @@ process.argv.splice(1).forEach(function(val, index, array) {
 		}
 	} else if (val === "-timing") {
 		logTiming = true;
+	} else if (val === "-segment-marker") {
+		SEGMENT_MARKER = array[index + 1];
+	} else if (val === "-chunk-media-segments") {
+		sendMediaSegmentsFragmented = true;
 	}
 });
 
