@@ -19,7 +19,10 @@ var ipaddr = "127.0.0.1";
 var port = 8000;
 var logLevel = 0;
 
-var sendMediaSegmentsFragmented = false;
+/* Boolean controlling the sending of segments fragment-by-fragment as HTTP chunks, 
+   requires MP4Box or DashCast to use -segment-marker eods */
+var sendMediaSegmentsFragmented = true;
+var SEGMENT_MARKER = "eods";
 var sendInitSegmentsFragmented = false;
 
 var logLevels = {
@@ -153,7 +156,7 @@ function readFromBufferAndSendBoxes(response, fileData) {
 		i += boxLength;
 		fileData.next_box_start = i;
 		
-		if (val1 + val2 + val3 + val4 == "eods") {
+		if (val1 + val2 + val3 + val4 == SEGMENT_MARKER) {
 			reportMessage(logLevels.DEBUG_BASIC, "**************** End of segment ****************");
 			buffer = sendAndUpdateBuffer(response, fileData, i);
 			fileData.endOfSegmentFound = true;
