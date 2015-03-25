@@ -200,20 +200,40 @@ function readFromBufferAndSendBoxes(response, fileData) {
 	}
 }
 
-var filesSent = new Array();
+function resetFileParams(filename, multipleFiles, initial_state, response) {
+	var params = new Object();
+	params.buffer = new Buffer(100000);
+	params.parsing_state = initial_state;
+	params.nb_valid_bytes = 0;
+	params.next_file_position = 0;
+	params.total_sent = 0;
+	params.next_byte_to_send = 0;
+	params.next_box_start = 0;
+	params.write_offset = 0;
+	params.request = false;
+	params.checkEndOfSegment = multipleFiles;
+	params.endOfSegmentFound = false;
+	params.response = response;
+	params.hasListener = false;
+	params.endSent = false;
+	return params;
+}
 
 function sendFragmentedFile(response, filename) {
 	/* the change event may be for a file deletion */
 	if (!fs.existsSync(filename)) return;
 	
-	/* In some modes, we don't check for specific end of marker boxes */
-	if (!filesSent[filename].checkEndOfSegment
-		|| (filesSent[filename].checkEndOfSegment && filesSent[filename].endOfSegmentFound == false)) {
+	var params = resetFileParams(filename, true, state.MOOV, response);
 
-		filesSent[filename].fd = fs.openSync(filename, 'r');
-		var stats = fs.fstatSync(filesSent[filename].fd);
+
+	/* In some modes, we don't check for specific end of marker boxes */
+	if (!params.checkEndOfSegment
+		|| (params.checkEndOfSegment && params.endOfSegmentFound == false)) {
+
+		params.fd = fs.openSync(filename, 'r');
+		var stats = fs.fstatSync(params.fd);
 		var file_size = stats.size;
-		if (file_size <= filesSent[filename].next_file_position) {
+		if (file_size <= params.next_file_position) {
 			reportMessage(logLevels.DEBUG_MAX, "Error: file size hasn't changed or is smaller: " + file_size);
 		}
 
@@ -221,17 +241,17 @@ function sendFragmentedFile(response, filename) {
 			/* If there is some data to read in the file, 
 			   read it (from the position next_file_position) 
 			   into the buffer (at the position write_offset)*/
-			if (filesSent[filename].next_file_position < file_size) {
-				readFileIntoBuffer(filesSent[filename]);
+			if (params.next_file_position < file_size) {
+				readFileIntoBuffer(params);
 			} 
 
 			/* Read boxes and send them 
 			   make sure we have at least 8 bytes to read box length and box code, 
 			   otherwise we need to wait for the next read */
-			boxReadingStatus = readFromBufferAndSendBoxes(response, filesSent[filename]);					
+			boxReadingStatus = readFromBufferAndSendBoxes(response, params);					
 							
 		
-			if (filesSent[filename].next_file_position < file_size) {
+			if (params.next_file_position < file_size) {
 				/* we still have some data to read from the file */
 				continue;
 			} else {
@@ -242,21 +262,21 @@ function sendFragmentedFile(response, filename) {
 				} else if (boxReadingStatus == "not-enough") { 
 					/* quit and wait for another file change event */
 					reportMessage(logLevels.DEBUG_BASIC, "Not enough data to read the full box");
-					if (filesSent[filename].hasListener == false) {
-            fs.watch(filename, fileListener);
-						filesSent[filename].hasListener = true;
+					if (params.hasListener == false) {
+            			fs.watch(filename, fileListener.bind(params));
+						params.hasListener = true;
 					}
 					break;
 				} else if (boxReadingStatus == "stop") {
 					/* reset the parser, the data written in the file by GPAC/MP4Box is not ready to be read yet
 					   quit and wait for another file change event */
 					reportMessage(logLevels.DEBUG_BASIC, "Resetting parser - GPAC data not ready yet");
-					filesSent[filename].next_file_position -= (filesSent[filename].nb_valid_bytes - filesSent[filename].next_box_start);
-					filesSent[filename].write_offset -= (filesSent[filename].nb_valid_bytes - filesSent[filename].next_box_start);
-					filesSent[filename].nb_valid_bytes = filesSent[filename].next_box_start;
-					if (filesSent[filename].hasListener == false) {
-						fs.watch(filename, fileListener);
-						filesSent[filename].hasListener = true;
+					params.next_file_position -= (params.nb_valid_bytes - params.next_box_start);
+					params.write_offset -= (params.nb_valid_bytes - params.next_box_start);
+					params.nb_valid_bytes = params.next_box_start;
+					if (params.hasListener == false) {
+						fs.watch(filename, fileListener.bind(params));
+						params.hasListener = true;
 					}
 					break;
 				} else if (boxReadingStatus == "end") {
@@ -268,20 +288,20 @@ function sendFragmentedFile(response, filename) {
 		
 		/* mark that the data from this file can be sent the next time its content will be refreshed 
 		  (to send the very latest fragment first) */
-		filesSent[filename].request = true;
-		if (filesSent[filename].endOfSegmentFound) {
+		params.request = true;
+		if (params.endOfSegmentFound) {
 			var resTime = getTime() - response.startTime;
 			reportMessage(logLevels.INFO, "end of file reading ("+filename+") in " + resTime + " ms at UTC " + getTime() );
-			filesSent[filename].response.end();
-			filesSent[filename].endSent = true;
+			params.response.end();
+			params.endSent = true;
 		}
-		reportMessage(logLevels.DEBUG_MAX, " next file read position: " + filesSent[filename].next_file_position);
-		reportMessage(logLevels.DEBUG_MAX, " buffer size: " + filesSent[filename].buffer.length);
-		reportMessage(logLevels.DEBUG_MAX, " next buffer read position: " + filesSent[filename].next_box_start);
-		reportMessage(logLevels.DEBUG_MAX, " next buffer write position: " + filesSent[filename].write_offset);
-		reportMessage(logLevels.DEBUG_MAX, " next buffer send start position: " + filesSent[filename].next_byte_to_send);
+		reportMessage(logLevels.DEBUG_MAX, " next file read position: " + params.next_file_position);
+		reportMessage(logLevels.DEBUG_MAX, " buffer size: " + params.buffer.length);
+		reportMessage(logLevels.DEBUG_MAX, " next buffer read position: " + params.next_box_start);
+		reportMessage(logLevels.DEBUG_MAX, " next buffer write position: " + params.write_offset);
+		reportMessage(logLevels.DEBUG_MAX, " next buffer send start position: " + params.next_byte_to_send);
 		
-		fs.closeSync(filesSent[filename].fd);
+		fs.closeSync(params.fd);
 		
 	}
 }
@@ -294,30 +314,10 @@ function fileListener(event, filename) {
 	
 	if (event == 'change') {
 		reportEvent("file", event, filename);
-		sendFragmentedFile(filesSent[filename].response, filename);
+		sendFragmentedFile(this.response, filename);
 	} else {
 		reportEvent("file", event, filename);
   }
-}
-
-
-function resetFileParams(filename, multipleFiles, initial_state, response) {
-	filesSent[filename] = new Object();
-	filesSent[filename].buffer = new Buffer(100000);
-	filesSent[filename].parsing_state = initial_state;
-	filesSent[filename].nb_valid_bytes = 0;
-	filesSent[filename].next_file_position = 0;
-	filesSent[filename].total_sent = 0;
-	filesSent[filename].next_byte_to_send = 0;
-	filesSent[filename].next_box_start = 0;
-	filesSent[filename].write_offset = 0;
-	filesSent[filename].request = false;
-	filesSent[filename].checkEndOfSegment = multipleFiles;
-	filesSent[filename].endOfSegmentFound = false;
-	filesSent[filename].response = response;
-	filesSent[filename].hasListener = false;
-	filesSent[filename].endSent = false;
-  
 }
 
 function sendFile(res, filename) {
@@ -379,7 +379,6 @@ var onRequest = function(req, res) {
 		};
 		res.writeHead(200, head);
 		if (sendMediaSegmentsFragmented) {
-			resetFileParams(parsed_url.pathname.slice(1), true, state.MOOV, res);
 			sendFragmentedFile(res, parsed_url.pathname.slice(1));
 		} else {
 			sendFile(res, parsed_url.pathname.slice(1));
