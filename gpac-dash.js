@@ -1,4 +1,7 @@
-/*******************************************************************************
+/* 
+ * Copyright (c) 2012-2013. Telecom ParisTech/TSI/MM/GPAC 
+ * License: AGPL-3-Clause (see LICENSE file)
+ *
  * NodeJS code to serve media content using DASH in low latency mode
  ******************************************************************************/
 
