@@ -74,7 +74,7 @@ function reportEvent(type, event, filename){
 function sendAndUpdateBuffer(response, fileData, endpos) {
 	var tmpBuffer;
 	fileData.total_sent += endpos;
-	reportMessage(logLevels.DEBUG_BASIC, "Sending data from " + fileData.next_byte_to_send + " to " + (endpos - 1) + " in " + (getTime() - response.startTime) + " ms (total_sent: "+fileData.total_sent+")");
+	reportMessage(sendMediaSegmentsFragmented ? logLevels.INFO : logLevels.DEBUG_BASIC, "Sending data from " + fileData.next_byte_to_send + " to " + (endpos - 1) + " in " + (getTime() - response.startTime) + " ms (total_sent: "+fileData.total_sent+")");
 	tmpBuffer = fileData.buffer.slice(fileData.next_byte_to_send, endpos);
 	response.write(tmpBuffer);
 	fileData.nb_valid_bytes -= tmpBuffer.length;
@@ -135,7 +135,7 @@ function readFromBufferAndSendBoxes(response, fileData) {
 	if (logLevel == logLevels.DEBUG_MAX) console.log(buffer.slice(0,8));
 
 	if (box_start + 8 > fileData.nb_valid_bytes) {
-		reportMessage(logLevels.INFO, "Not enough data in buffer to read box header: " + box_start + " - length: "+ buffer.length + " - nb valid bytes: " + fileData.nb_valid_bytes);
+		reportMessage(logLevels.DEBUG_BASIC, "Not enough data in buffer to read box header: " + box_start + " - length: "+ buffer.length + " - nb valid bytes: " + fileData.nb_valid_bytes);
 		return "not-enough";
 	} 
 	
@@ -207,8 +207,7 @@ function readFromBufferAndSendBoxes(response, fileData) {
 	return "ok";			
 }
 
-function Parameters(filename, multipleFiles, initial_state, response) {
-  this.filename = filename;
+function Parameters( multipleFiles, initial_state, response) {
 	this.buffer = new Buffer(100000);
 	this.parsing_state = initial_state;
 	this.nb_valid_bytes = 0;
@@ -221,7 +220,7 @@ function Parameters(filename, multipleFiles, initial_state, response) {
 	this.checkEndOfSegment = multipleFiles;
 	this.endOfSegmentFound = false;
 	this.response = response;
-	this.hasListener = false;
+	this.listener = null;
 	this.endSent = false;
 }
 
@@ -265,9 +264,8 @@ function sendFragmentedFile(response, filename, params) {
 				} else if (boxReadingStatus == "not-enough") { 
 					/* quit and wait for another file change event */
 					reportMessage(logLevels.DEBUG_BASIC, "Not enough data to read the full box");
-					if (params.hasListener == false) {
-            			fs.watch(filename, fileListener.bind(params));
-						params.hasListener = true;
+					if (params.listener == null) {
+        			params.listener = fs.watch(filename, fileListener.bind(params));
 					}
 					break;
 				} else if (boxReadingStatus == "stop") {
@@ -278,9 +276,8 @@ function sendFragmentedFile(response, filename, params) {
         	reportMessage(logLevels.DEBUG_MAX, "Next file position is now "+params.next_file_position);
 					params.write_offset -= (params.nb_valid_bytes - params.next_box_start);
 					params.nb_valid_bytes = params.next_box_start;
-					if (params.hasListener == false) {
-						fs.watch(filename, fileListener.bind(params));
-						params.hasListener = true;
+					if (params.listener == null) {
+						params.listener = fs.watch(filename, fileListener.bind(params));
 					}
 					break;
 				} else if (boxReadingStatus == "end") {
@@ -298,6 +295,9 @@ function sendFragmentedFile(response, filename, params) {
 			reportMessage(logLevels.INFO, "end of file reading ("+filename+") in " + resTime + " ms at UTC " + getTime() );
 			params.response.end();
 			params.endSent = true;
+      if (params.listener) {
+        params.listener.close();
+      }
 		}
 		reportMessage(logLevels.DEBUG_MAX, " next file read position: " + params.next_file_position);
 		reportMessage(logLevels.DEBUG_MAX, " buffer size: " + params.buffer.length);
@@ -365,7 +365,8 @@ var onRequest = function(req, res) {
     return;
 	} 
 
-  res.params = new Parameters(parsed_url.pathname.slice(1), false, state.NONE, res);
+  var filename = parsed_url.pathname.slice(1);
+  var params = new Parameters(false, state.NONE, res);
   
   if (parsed_url.pathname.slice(-3) === "mp4") {
 		head = {
@@ -376,12 +377,12 @@ var onRequest = function(req, res) {
     
 		/* TODO: Check if we should send MP4 files as fragmented files or not */
 		if (sendInitSegmentsFragmented) {
-		  sendFragmentedFile(res, res.params.filename, res.params);
+		  sendFragmentedFile(res, filename, params);
 		  /* Sending the final 0-size chunk because the file won't change anymore */
 		  res.end();
 		  reportMessage(logLevels.INFO, "file "+ parsed_url.pathname.slice(1) + " sent in " + (getTime() - res.startTime) + " ms");
 		} else {
-		  sendFile(res, res.params.filename);
+		  sendFile(res, filename);
 		}
 	} else if (parsed_url.pathname.slice(-3) === "m4s") {
 		head = {
@@ -390,9 +391,9 @@ var onRequest = function(req, res) {
 		};
 		res.writeHead(200, head);
 		if (sendMediaSegmentsFragmented) {
-			sendFragmentedFile(res, res.params.filename, res.params);
+			sendFragmentedFile(res, filename, params);
 		} else {
-			sendFile(res, res.params.filename);
+			sendFile(res, filename);
 		}
 	}
 }
