@@ -146,7 +146,7 @@ function readFromBufferAndSendBoxes(response, fileData) {
 	var val3 = String.fromCharCode(buffer.readUInt8(box_start + 6));
 	var val4 = String.fromCharCode(buffer.readUInt8(box_start + 7));
 
-	reportMessage(logLevels.DEBUG_BASIC, "Parsing box: code: " + val1 + val2 + val3 + val4 + " length: " + boxLength);
+	reportMessage(logLevels.DEBUG_BASIC, "Parsing box: code: " + val1 + val2 + val3 + val4 + " length: " + boxLength + " - parsing state: " + fileData.parsing_state);
 	
 	if (boxLength == 0) {
 		reportMessage(logLevels.DEBUG_BASIC, "Box length 0, stopping parsing");
@@ -180,6 +180,8 @@ function readFromBufferAndSendBoxes(response, fileData) {
 		if (val1 + val2 + val3 + val4 == "moov") {
 			buffer = sendAndUpdateBuffer(response, fileData, fileData.next_box_start);
 			fileData.parsing_state = state.MOOV; 
+    } else if (val1 + val2 + val3 + val4 == "moof") {
+			fileData.parsing_state = state.MOOF; 
 		} else {
 			/* wait for another box */
 		}
