@@ -88,8 +88,10 @@ function sendAndUpdateBuffer(response, fileData, endpos) {
 	fileData.next_box_start = 0;
 	
 	fileData.write_offset -= endpos;
-	reportMessage(logLevels.DEBUG_MAX, "Updating next buffer write offset: " + fileData.write_offset);
-	
+	reportMessage(logLevels.DEBUG_MAX, "Updating next buffer write offset: " + fileData.write_offset + ' - next 8 bytes:');
+
+	if (logLevel == logLevels.DEBUG_MAX) console.log(fileData.buffer.slice(0,8));
+
 	return fileData.buffer;
 }
 
@@ -109,6 +111,9 @@ function readFileIntoBuffer(fileData) {
 	reportMessage(logLevels.DEBUG_MAX, "bytesRead: " + bytesRead);
 	if (logLevel == logLevels.DEBUG_MAX) console.log(buffer.slice(0,100));
 	j = j + bytesRead;
+
+	reportMessage(logLevels.DEBUG_MAX, "next file read position: " + j);
+
 	fileData.next_file_position = j;
 	fileData.write_offset += bytesRead;
 	fileData.nb_valid_bytes += bytesRead ;
@@ -123,108 +128,104 @@ var state = {
 };
 
 function readFromBufferAndSendBoxes(response, fileData) {
-	var i = fileData.next_box_start;
+	var box_start = fileData.next_box_start;
 	var buffer = fileData.buffer;
 
-	reportMessage(logLevels.DEBUG_MAX, "Reading new box from buffer position: " + i + " - length: "+ buffer.length);
+	reportMessage(logLevels.DEBUG_MAX, "Reading new box from buffer position: " + box_start + " - length: "+ buffer.length);
 	if (logLevel == logLevels.DEBUG_MAX) console.log(buffer.slice(0,8));
 
-	if (i + 8 > fileData.nb_valid_bytes) {
-		reportMessage(logLevels.INFO, "Not enough data in buffer to read box header: " + i + " - length: "+ buffer.length);
+	if (box_start + 8 > fileData.nb_valid_bytes) {
+		reportMessage(logLevels.INFO, "Not enough data in buffer to read box header: " + box_start + " - length: "+ buffer.length + " - nb valid bytes: " + fileData.nb_valid_bytes);
 		return "not-enough";
 	} 
 	
-	var boxLength = buffer.readUInt32BE(i);
-	i += 4;
+	var boxLength = buffer.readUInt32BE(box_start);
 
-	var val1 = String.fromCharCode(buffer.readUInt8(i));
-	var val2 = String.fromCharCode(buffer.readUInt8(i + 1));
-	var val3 = String.fromCharCode(buffer.readUInt8(i + 2));
-	var val4 = String.fromCharCode(buffer.readUInt8(i + 3));
-	i -= 4;
+	var val1 = String.fromCharCode(buffer.readUInt8(box_start + 4));
+	var val2 = String.fromCharCode(buffer.readUInt8(box_start + 5));
+	var val3 = String.fromCharCode(buffer.readUInt8(box_start + 6));
+	var val4 = String.fromCharCode(buffer.readUInt8(box_start + 7));
+
 	reportMessage(logLevels.DEBUG_BASIC, "Parsing box: code: " + val1 + val2 + val3 + val4 + " length: " + boxLength);
 	
 	if (boxLength == 0) {
 		reportMessage(logLevels.DEBUG_BASIC, "Box length 0, stopping parsing");
 		return "stop";
-	} else if (i + boxLength > fileData.nb_valid_bytes) {
+	} 
+  if (box_start + boxLength > fileData.nb_valid_bytes) {
 		/*
 		 * there is not enough data in the buffer to skip the box 
 		 * coming back to the beginning of the box and
 		 * exiting for new buffer allocation and additional read
 		 * from file
 		 */
-		reportMessage(logLevels.DEBUG_MAX, "Not enough data in buffer to skip the box ("+i+"/"+fileData.nb_valid_bytes+")");
-		fileData.next_box_start = i;
+		reportMessage(logLevels.DEBUG_MAX, "Not enough data in buffer to skip the box ("+box_start+"/"+fileData.nb_valid_bytes+")");
+		fileData.next_box_start = box_start;
 		reportMessage(logLevels.DEBUG_MAX, "Saving start position of the box for next read: " + fileData.next_box_start);
 		return "not-enough";
-	} else {
-		i += boxLength;
-		fileData.next_box_start = i;
+	} 
+  
+  box_start += boxLength;
+	fileData.next_box_start = box_start;
 		
-		if (val1 + val2 + val3 + val4 == SEGMENT_MARKER) {
-			reportMessage(logLevels.DEBUG_BASIC, "**************** End of segment ****************");
-			buffer = sendAndUpdateBuffer(response, fileData, i);
-			fileData.endOfSegmentFound = true;
-			return "end";
-		}
-
-		switch (fileData.parsing_state) {
-		case "none":		
-			if (val1 + val2 + val3 + val4 == "moov") {
-				buffer = sendAndUpdateBuffer(response, fileData, i);
-				fileData.parsing_state = state.MOOV; 
-			} else {
-				/* wait for another box */
-			}
-			break;
-
-		case "moov":
-			if (val1 + val2 + val3 + val4 == "moof") {
-				fileData.parsing_state = state.MOOF; 
-			} else {
-				/* wait for another box */
-			}
-			break;
-
-		case "moof":
-			if (val1 + val2 + val3 + val4 == "mdat") {
-				buffer = sendAndUpdateBuffer(response, fileData, i);
-				fileData.parsing_state = state.MOOV;
-			} else {
-				/* wait for another box */
-			}
-			break;
-		}
-		return "ok";		
+	if (val1 + val2 + val3 + val4 == SEGMENT_MARKER) {
+		reportMessage(logLevels.DEBUG_BASIC, "**************** End of segment ****************");
+		buffer = sendAndUpdateBuffer(response, fileData, fileData.next_box_start);
+		fileData.endOfSegmentFound = true;
+		return "end";
 	}
+
+	switch (fileData.parsing_state) {
+	case "none":		
+		if (val1 + val2 + val3 + val4 == "moov") {
+			buffer = sendAndUpdateBuffer(response, fileData, fileData.next_box_start);
+			fileData.parsing_state = state.MOOV; 
+		} else {
+			/* wait for another box */
+		}
+		break;
+
+	case "moov":
+		if (val1 + val2 + val3 + val4 == "moof") {
+			fileData.parsing_state = state.MOOF; 
+		} else {
+			/* wait for another box */
+		}
+		break;
+
+	case "moof":
+		if (val1 + val2 + val3 + val4 == "mdat") {
+			buffer = sendAndUpdateBuffer(response, fileData, fileData.next_box_start);
+			fileData.parsing_state = state.MOOV;
+		} else {
+			/* wait for another box */
+		}
+		break;
+	}
+	return "ok";			
 }
 
-function resetFileParams(filename, multipleFiles, initial_state, response) {
-	var params = new Object();
-	params.buffer = new Buffer(100000);
-	params.parsing_state = initial_state;
-	params.nb_valid_bytes = 0;
-	params.next_file_position = 0;
-	params.total_sent = 0;
-	params.next_byte_to_send = 0;
-	params.next_box_start = 0;
-	params.write_offset = 0;
-	params.request = false;
-	params.checkEndOfSegment = multipleFiles;
-	params.endOfSegmentFound = false;
-	params.response = response;
-	params.hasListener = false;
-	params.endSent = false;
-	return params;
+function Parameters(filename, multipleFiles, initial_state, response) {
+  this.filename = filename;
+	this.buffer = new Buffer(100000);
+	this.parsing_state = initial_state;
+	this.nb_valid_bytes = 0;
+	this.next_file_position = 0;
+	this.total_sent = 0;
+	this.next_byte_to_send = 0;
+	this.next_box_start = 0;
+	this.write_offset = 0;
+	this.request = false;
+	this.checkEndOfSegment = multipleFiles;
+	this.endOfSegmentFound = false;
+	this.response = response;
+	this.hasListener = false;
+	this.endSent = false;
 }
 
-function sendFragmentedFile(response, filename) {
+function sendFragmentedFile(response, filename, params) {
 	/* the change event may be for a file deletion */
 	if (!fs.existsSync(filename)) return;
-	
-	var params = resetFileParams(filename, true, state.MOOV, response);
-
 
 	/* In some modes, we don't check for specific end of marker boxes */
 	if (!params.checkEndOfSegment
@@ -272,6 +273,7 @@ function sendFragmentedFile(response, filename) {
 					   quit and wait for another file change event */
 					reportMessage(logLevels.DEBUG_BASIC, "Resetting parser - GPAC data not ready yet");
 					params.next_file_position -= (params.nb_valid_bytes - params.next_box_start);
+        	reportMessage(logLevels.DEBUG_MAX, "Next file position is now "+params.next_file_position);
 					params.write_offset -= (params.nb_valid_bytes - params.next_box_start);
 					params.nb_valid_bytes = params.next_box_start;
 					if (params.hasListener == false) {
@@ -314,7 +316,7 @@ function fileListener(event, filename) {
 	
 	if (event == 'change') {
 		reportEvent("file", event, filename);
-		sendFragmentedFile(this.response, filename);
+		sendFragmentedFile(this.response, filename, this);
 	} else {
 		reportEvent("file", event, filename);
   }
@@ -345,10 +347,12 @@ var onRequest = function(req, res) {
 		reportMessage(logLevels.INFO, "Request for non existing file: "+ parsed_url.pathname.slice(1) + " at UTC "+getTime());
 		res.writeHead(404, head);
 		res.end();
+    return;
 	} else {
 		res.startTime = getTime();
 		reportMessage(logLevels.INFO, "Request for file: "+ parsed_url.pathname.slice(1)  + " at UTC " + res.startTime ) ;
 	}
+
 	if (parsed_url.pathname.slice(-3) === "mpd") {
 		head = {
 			'Content-Type' : 'application/dash+xml',
@@ -356,21 +360,26 @@ var onRequest = function(req, res) {
 		};
 		res.writeHead(200, head);
 		sendFile(res, parsed_url.pathname.slice(1));
-	} else if (parsed_url.pathname.slice(-3) === "mp4") {
+    return;
+	} 
+
+  res.params = new Parameters(parsed_url.pathname.slice(1), false, state.NONE, res);
+  
+  if (parsed_url.pathname.slice(-3) === "mp4") {
 		head = {
 			'Content-Type' : 'video/mp4',
     		'Server-UTC': ''+getTime() 
 		};
 		res.writeHead(200, head);
-		resetFileParams(parsed_url.pathname.slice(1), false, state.NONE);
+    
 		/* TODO: Check if we should send MP4 files as fragmented files or not */
 		if (sendInitSegmentsFragmented) {
-		  sendFragmentedFile(res, parsed_url.pathname.slice(1));
+		  sendFragmentedFile(res, res.params.filename, res.params);
 		  /* Sending the final 0-size chunk because the file won't change anymore */
 		  res.end();
 		  reportMessage(logLevels.INFO, "file "+ parsed_url.pathname.slice(1) + " sent in " + (getTime() - res.startTime) + " ms");
 		} else {
-		  sendFile(res, parsed_url.pathname.slice(1));
+		  sendFile(res, res.params.filename);
 		}
 	} else if (parsed_url.pathname.slice(-3) === "m4s") {
 		head = {
@@ -379,9 +388,9 @@ var onRequest = function(req, res) {
 		};
 		res.writeHead(200, head);
 		if (sendMediaSegmentsFragmented) {
-			sendFragmentedFile(res, parsed_url.pathname.slice(1));
+			sendFragmentedFile(res, res.params.filename, res.params);
 		} else {
-			sendFile(res, parsed_url.pathname.slice(1));
+			sendFile(res, res.params.filename);
 		}
 	}
 }
