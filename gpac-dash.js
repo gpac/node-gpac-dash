@@ -31,6 +31,8 @@ var sendMediaSegmentsFragmented = false;
 var SEGMENT_MARKER = "eods";
 var sendInitSegmentsFragmented = false;
 
+var fileWatchOptions = { persistent: true, interval: 10 };
+
 var logLevels = {
   INFO: 0,
   DEBUG_BASIC: 1,
@@ -265,7 +267,7 @@ function sendFragmentedFile(response, filename, params) {
 					/* quit and wait for another file change event */
 					reportMessage(logLevels.DEBUG_BASIC, "Not enough data to read the full box");
 					if (params.listener == null) {
-        			params.listener = fs.watch(filename, fileListener.bind(params));
+        			params.listener = fs.watchFile(filename, fileWatchOptions, fileListener.bind(params));
 					}
 					break;
 				} else if (boxReadingStatus == "stop") {
@@ -277,10 +279,12 @@ function sendFragmentedFile(response, filename, params) {
 					params.write_offset -= (params.nb_valid_bytes - params.next_box_start);
 					params.nb_valid_bytes = params.next_box_start;
 					if (params.listener == null) {
-						params.listener = fs.watch(filename, fileListener.bind(params));
+						params.listener = fs.watchFile(filename, fileWatchOptions, fileListener.bind(params));
 					}
 					break;
 				} else if (boxReadingStatus == "end") {
+					reportMessage(logLevels.DEBUG_BASIC, "end reached");
+					fs.unwatchFile(filename, params.listener);
 					/* Quit */
 					break;
 				}
