@@ -34,7 +34,7 @@ var sendInitSegmentsFragmented = false;
 
 var use_watchFile = false;
 var watchOptions = { persistent: true, recursive: false };
-var watchFileOptions = { persistent: true, recursive: false };
+var watchFileOptions = { persistent: true, interval: 10 };
 
 var logLevels = {
   INFO: 0,
