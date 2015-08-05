@@ -13,6 +13,7 @@ function usage() {
 	console.log("-port <port>           port of the server (default 8000)");
 	console.log("-chunk-media-segments  send media segments asap using chunked transfer (default no)");
 	console.log("-segment-marker <4cc>  marker for end of segment (default eods)");
+	console.log("-use-watchFile         uses watchFile API instead of watch");
 
 	console.log();
 }
@@ -31,7 +32,9 @@ var sendMediaSegmentsFragmented = false;
 var SEGMENT_MARKER = "eods";
 var sendInitSegmentsFragmented = false;
 
-var fileWatchOptions = { persistent: true, interval: 10 };
+var use_watchFile = false;
+var watchOptions = { persistent: true, recursive: false };
+var watchFileOptions = { persistent: true, recursive: false };
 
 var logLevels = {
   INFO: 0,
@@ -209,7 +212,7 @@ function readFromBufferAndSendBoxes(response, fileData) {
 	return "ok";			
 }
 
-function Parameters( multipleFiles, initial_state, response) {
+function Parameters( multipleFiles, initial_state, response, filename) {
 	this.buffer = new Buffer(100000);
 	this.parsing_state = initial_state;
 	this.nb_valid_bytes = 0;
@@ -224,11 +227,15 @@ function Parameters( multipleFiles, initial_state, response) {
 	this.response = response;
 	this.listener = null;
 	this.endSent = false;
+	this.filename = filename;
 }
 
 function sendFragmentedFile(response, filename, params) {
 	/* the change event may be for a file deletion */
-	if (!fs.existsSync(filename)) return;
+	if (!fs.existsSync(filename)) {
+		reportMessage(logLevels.DEBUG_MAX, "File filename does not exist");
+		return;
+	}
 
 	/* In some modes, we don't check for specific end of marker boxes */
 	if (!params.checkEndOfSegment
@@ -267,7 +274,11 @@ function sendFragmentedFile(response, filename, params) {
 					/* quit and wait for another file change event */
 					reportMessage(logLevels.DEBUG_BASIC, "Not enough data to read the full box");
 					if (params.listener == null) {
-        			params.listener = fs.watchFile(filename, fileWatchOptions, fileListener.bind(params));
+						if (use_watchFile) {
+							params.listener = fs.watchFile(filename, watchFileOptions, watchFileListener.bind(params));
+						} else {
+							params.listener = fs.watch(filename, watchOptions, watchListener.bind(params));
+						}
 					}
 					break;
 				} else if (boxReadingStatus == "stop") {
@@ -275,16 +286,25 @@ function sendFragmentedFile(response, filename, params) {
 					   quit and wait for another file change event */
 					reportMessage(logLevels.DEBUG_BASIC, "Resetting parser - GPAC data not ready yet");
 					params.next_file_position -= (params.nb_valid_bytes - params.next_box_start);
-        	reportMessage(logLevels.DEBUG_MAX, "Next file position is now "+params.next_file_position);
+					reportMessage(logLevels.DEBUG_MAX, "Next file position is now "+params.next_file_position);
 					params.write_offset -= (params.nb_valid_bytes - params.next_box_start);
 					params.nb_valid_bytes = params.next_box_start;
 					if (params.listener == null) {
-						params.listener = fs.watchFile(filename, fileWatchOptions, fileListener.bind(params));
+						if (use_watchFile) {
+							params.listener = fs.watchFile(filename, watchFileOptions, watchFileListener.bind(params));
+						} else {
+							params.listener = fs.watch(filename, watchOptions, watchListener.bind(params));
+						}
 					}
 					break;
 				} else if (boxReadingStatus == "end") {
 					reportMessage(logLevels.DEBUG_BASIC, "end reached");
-					fs.unwatchFile(filename, params.listener);
+					if (use_watchFile) {
+						fs.unwatchFile(filename, params.listener);
+					} else if (params.listener) {
+						params.listener.close();
+					}
+					params.listener = null;
 					/* Quit */
 					break;
 				}
@@ -299,9 +319,9 @@ function sendFragmentedFile(response, filename, params) {
 			reportMessage(logLevels.INFO, "end of file reading ("+filename+") in " + resTime + " ms at UTC " + getTime() );
 			params.response.end();
 			params.endSent = true;
-      if (params.listener) {
-        params.listener.close();
-      }
+			if (params.listener) {
+				params.listener.close();
+			}
 		}
 		reportMessage(logLevels.DEBUG_MAX, " next file read position: " + params.next_file_position);
 		reportMessage(logLevels.DEBUG_MAX, " buffer size: " + params.buffer.length);
@@ -317,16 +337,23 @@ function sendFragmentedFile(response, filename, params) {
 /* Callback function used when an file event is generated, the file is sent in a fragmented manner 
  * The listener is not removed
  */
-function fileListener(event, filename) {
+function watchListener(event, filename) {
 	var boxReadingStatus;
 	
 	if (event == 'change') {
 		reportEvent("file", event, filename);
-		sendFragmentedFile(this.response, filename, this);
+		sendFragmentedFile(this.response, this.filename, this);
 	} else {
 		reportEvent("file", event, filename);
   }
 }
+
+function watchFileListener(curr, prev) {
+	var boxReadingStatus;
+	
+	sendFragmentedFile(this.response, this.filename, this);
+}
+
 
 function sendFile(res, filename) {
 	var file_stream = fs.createReadStream(filename);
@@ -370,7 +397,7 @@ var onRequest = function(req, res) {
 	} 
 
   var filename = parsed_url.pathname.slice(1);
-  var params = new Parameters(false, state.NONE, res);
+  var params = new Parameters(false, state.NONE, res, filename);
   
   if (parsed_url.pathname.slice(-3) === "mp4") {
 		head = {
@@ -425,6 +452,8 @@ process.argv.splice(1).forEach(function(val, index, array) {
 		SEGMENT_MARKER = array[index + 1];
 	} else if (val === "-chunk-media-segments") {
 		sendMediaSegmentsFragmented = true;
+	} else if (val === "-use-watchFile") {
+		use_watchFile = true;
 	}
 });
 
