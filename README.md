@@ -38,3 +38,10 @@ MP4Box -dash-live 1000 -frag 1000 -profile live -subdur 1000 -mpd-refresh 1000 -
 node gpac-dash.js 
 MP4Client http://127.0.0.1:8000/counter_dash.mpd (does not work with DASH.js, wrong fetch time)
 ```
+
+Low-latency DASH Server with live content 
+```
+DashCast  -vf dshow  -vres 640x480 -vfr 30 -v video="Integrated Webcam" -live -low-delay -frag 200 -insert-utc -seg-marker eods -min-buffer 0.2 -ast-offset -800 -pixf yuv420p
+ node gpac-dash.js -segment-marker eods -chunk-media-segments
+MP4Client http://127.0.0.1:8000/output/dashcast.mpd -opt Network:BufferLength=200 -opt DASH:LowLatency=chunk -opt DASH:UseServerUTC=no
+```
