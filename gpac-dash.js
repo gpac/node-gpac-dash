@@ -79,7 +79,8 @@ function reportEvent(type, event, filename){
 function sendAndUpdateBuffer(response, message, fileData, endpos) {
 	var tmpBuffer;
 	fileData.total_sent += endpos;
-	reportMessage(sendMediaSegmentsFragmented ? logLevels.INFO : logLevels.DEBUG_BASIC, "Sending "+message+" data from " + fileData.next_byte_to_send + " to " + (endpos - 1) + " in " + (getTime() - response.startTime) + " ms (total_sent: "+fileData.total_sent+") at utc "+ getTime());
+	reportMessage(sendMediaSegmentsFragmented ? logLevels.INFO : logLevels.DEBUG_BASIC, 
+		"File "+fileData.filename+", sending "+message+" data from " + fileData.next_byte_to_send + " to " + (endpos - 1) + " in " + (getTime() - response.startTime) + " ms (total_sent: "+fileData.total_sent+") at utc "+ getTime());
 	tmpBuffer = fileData.buffer.slice(fileData.next_byte_to_send, endpos);
 	response.write(tmpBuffer);
 	fileData.nb_valid_bytes -= tmpBuffer.length;
@@ -177,6 +178,7 @@ function readFromBufferAndSendBoxes(response, fileData) {
 		reportMessage(logLevels.DEBUG_BASIC, "**************** End of segment ****************");
 		buffer = sendAndUpdateBuffer(response, "eods", fileData, fileData.next_box_start);
 		fileData.endOfSegmentFound = true;
+		fileData.nbMdatInSegment = 0;
 		return "end";
 	}
 
@@ -203,7 +205,8 @@ function readFromBufferAndSendBoxes(response, fileData) {
 	case "moof":
 		if (val1 + val2 + val3 + val4 == "mdat") {
 			buffer = sendAndUpdateBuffer(response, "mdat", fileData, fileData.next_box_start);
-			reportMessage(logLevels.DEBUG_BASIC, "Fragment sent at utc "+getTime());
+			reportMessage(logLevels.DEBUG_BASIC, "File "+fileData.filename+", fragment "+fileData.nbMdatInSegment+" sent at utc "+getTime());
+			fileData.nbMdatInSegment++;
 			fileData.parsing_state = state.MOOV;
 		} else {
 			/* wait for another box */
@@ -229,6 +232,7 @@ function Parameters( multipleFiles, initial_state, response, filename) {
 	this.listener = null;
 	this.endSent = false;
 	this.filename = filename;
+	this.nbMdatInSegment = 0;
 }
 
 function sendFragmentedFile(response, filename, params) {
@@ -357,18 +361,27 @@ function watchFileListener(curr, prev) {
 
 
 function sendFile(res, filename) {
-	var file_stream = fs.createReadStream(filename);
-	reportMessage(logLevels.DEBUG_BASIC, "Sending file ("+filename+")");
-	file_stream.on("error", function(exception) {
-		console.error("Error reading file ("+filename+")", exception);
-	});
-	file_stream.on("data", function(data) {
-		res.write(data);
-	});
-	file_stream.on("close", function() {	
-		reportMessage(logLevels.DEBUG_BASIC, "Done sending file ("+filename+")" + "in " + (getTime() - res.startTime) + " ms");
-		res.end();
-	});
+	var useChunk = false;
+	if (useChunk) {
+		var file_stream = fs.createReadStream(filename);
+		reportMessage(logLevels.DEBUG_BASIC, "Sending file ("+filename+")");
+		file_stream.on("error", function(exception) {
+			console.error("Error reading file ("+filename+")", exception);
+		});
+		file_stream.on("data", function(data) {
+			res.write(data);
+		});
+		file_stream.on("close", function() {	
+			reportMessage(logLevels.DEBUG_BASIC, "Done sending file ("+filename+")" + "in " + (getTime() - res.startTime) + " ms");
+			res.end();
+		});
+	} else {
+		/* Send the whole file using .end() to avoid using .write() because it uses chunk encoding
+		   Use synchronous reading as they are small files (MPD and init) */
+		var buffer = fs.readFileSync(filename);
+		res.setHeader('Content-Length', buffer.length);
+		res.end(buffer);
+	}
 }
 
 var onRequest = function(req, res) {
@@ -376,10 +389,9 @@ var onRequest = function(req, res) {
 	var parsed_url = url_parser.parse(req.url, true);
 	// console.log(parsed_url);
 	 /* we send the files as they come, except for segments for which we send fragment by fragment */
-	var head = {};
 	if (!fs.existsSync(parsed_url.pathname.slice(1))) {
 		reportMessage(logLevels.INFO, "Request for non existing file: "+ parsed_url.pathname.slice(1) + " at UTC "+getTime());
-		res.writeHead(404, head);
+		res.statusCode = 404;
 		res.end();
     return;
 	} else {
@@ -388,11 +400,9 @@ var onRequest = function(req, res) {
 	}
 
 	if (parsed_url.pathname.slice(-3) === "mpd") {
-		head = {
-			'Content-Type' : 'application/dash+xml',
-    		'Server-UTC': ''+getTime() 
-		};
-		res.writeHead(200, head);
+		res.statusCode = 200;
+		res.setHeader('Content-Type', 'application/dash+xml');
+		res.setHeader('Server-UTC', ''+getTime());
 		sendFile(res, parsed_url.pathname.slice(1));
     return;
 	} 
@@ -401,11 +411,9 @@ var onRequest = function(req, res) {
   var params = new Parameters(false, state.NONE, res, filename);
   
   if (parsed_url.pathname.slice(-3) === "mp4") {
-		head = {
-			'Content-Type' : 'video/mp4',
-    		'Server-UTC': ''+getTime() 
-		};
-		res.writeHead(200, head);
+		res.statusCode = 200;
+		res.setHeader('Content-Type', 'video/mp4');
+		res.setHeader('Server-UTC', ''+getTime());
     
 		/* TODO: Check if we should send MP4 files as fragmented files or not */
 		if (sendInitSegmentsFragmented) {
@@ -417,11 +425,9 @@ var onRequest = function(req, res) {
 		  sendFile(res, filename);
 		}
 	} else if (parsed_url.pathname.slice(-3) === "m4s") {
-		head = {
-			'Content-Type' : 'application/octet-stream',
-    		'Server-UTC': ''+getTime() 
-		};
-		res.writeHead(200, head);
+		res.statusCode = 200;
+		res.setHeader('Content-Type', 'application/octet-stream');
+		res.setHeader('Server-UTC', ''+getTime());
 		if (sendMediaSegmentsFragmented) {
 			sendFragmentedFile(res, filename, params);
 		} else {
