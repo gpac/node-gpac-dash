@@ -76,10 +76,10 @@ function reportEvent(type, event, filename){
 	reportMessage(logLevels.DEBUG_BASIC, type + " event (" + event + ") on "+filename+" (size "+file_size+")");
 }
 
-function sendAndUpdateBuffer(response, fileData, endpos) {
+function sendAndUpdateBuffer(response, message, fileData, endpos) {
 	var tmpBuffer;
 	fileData.total_sent += endpos;
-	reportMessage(sendMediaSegmentsFragmented ? logLevels.INFO : logLevels.DEBUG_BASIC, "Sending data from " + fileData.next_byte_to_send + " to " + (endpos - 1) + " in " + (getTime() - response.startTime) + " ms (total_sent: "+fileData.total_sent+")");
+	reportMessage(sendMediaSegmentsFragmented ? logLevels.INFO : logLevels.DEBUG_BASIC, "Sending "+message+" data from " + fileData.next_byte_to_send + " to " + (endpos - 1) + " in " + (getTime() - response.startTime) + " ms (total_sent: "+fileData.total_sent+") at utc "+ getTime());
 	tmpBuffer = fileData.buffer.slice(fileData.next_byte_to_send, endpos);
 	response.write(tmpBuffer);
 	fileData.nb_valid_bytes -= tmpBuffer.length;
@@ -175,7 +175,7 @@ function readFromBufferAndSendBoxes(response, fileData) {
 		
 	if (val1 + val2 + val3 + val4 == SEGMENT_MARKER) {
 		reportMessage(logLevels.DEBUG_BASIC, "**************** End of segment ****************");
-		buffer = sendAndUpdateBuffer(response, fileData, fileData.next_box_start);
+		buffer = sendAndUpdateBuffer(response, "eods", fileData, fileData.next_box_start);
 		fileData.endOfSegmentFound = true;
 		return "end";
 	}
@@ -183,7 +183,7 @@ function readFromBufferAndSendBoxes(response, fileData) {
 	switch (fileData.parsing_state) {
 	case "none":		
 		if (val1 + val2 + val3 + val4 == "moov") {
-			buffer = sendAndUpdateBuffer(response, fileData, fileData.next_box_start);
+			buffer = sendAndUpdateBuffer(response, "moov", fileData, fileData.next_box_start);
 			fileData.parsing_state = state.MOOV; 
     } else if (val1 + val2 + val3 + val4 == "moof") {
 			fileData.parsing_state = state.MOOF; 
@@ -202,7 +202,8 @@ function readFromBufferAndSendBoxes(response, fileData) {
 
 	case "moof":
 		if (val1 + val2 + val3 + val4 == "mdat") {
-			buffer = sendAndUpdateBuffer(response, fileData, fileData.next_box_start);
+			buffer = sendAndUpdateBuffer(response, "mdat", fileData, fileData.next_box_start);
+			reportMessage(logLevels.DEBUG_BASIC, "Fragment sent at utc "+getTime());
 			fileData.parsing_state = state.MOOV;
 		} else {
 			/* wait for another box */
