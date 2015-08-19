@@ -6,3 +6,5 @@ cat mp4box-live-log.txt  | grep Closing > mp4box-live-log-segment.txt
 cat server-log.txt  | grep Request > server-log-segment.txt
 
 cat client-log.txt | grep GET > client-log-get.txt
+
+paste mp4box-live-log-segment.txt server-log-segment.txt client-log-get.txt > log-segment.txt
