@@ -31,6 +31,7 @@ var logLevel = 0;
 var sendMediaSegmentsFragmented = false;
 var SEGMENT_MARKER = "eods";
 var sendInitSegmentsFragmented = false;
+var allowCors = false;
 
 var use_watchFile = false;
 var watchOptions = { persistent: true, recursive: false };
@@ -412,6 +413,9 @@ var onRequest = function(req, res) {
 		res.statusCode = 200;
 		res.setHeader("Content-Type", mime_types[ext]);
 		res.setHeader("Server-UTC", time);
+		if (allowCors) {
+			res.setHeader("Access-Control-Allow-Origin", "*");
+		}
 		// TODO: Check if we should send MP4 files as fragmented files or not
 		if (ext === "mp4" && sendInitSegmentsFragmented || ext === "m4s" && sendMediaSegmentsFragmented) {
 			var params = new Parameters(false, state.NONE, res, filename);
@@ -450,6 +454,8 @@ process.argv.splice(1).forEach(function(val, index, array) {
 		sendMediaSegmentsFragmented = true;
 	} else if (val === "-use-watchFile") {
 		use_watchFile = true;
+	} else if (val === "-cors") {
+		allowCors = true;
 	}
 });
 
