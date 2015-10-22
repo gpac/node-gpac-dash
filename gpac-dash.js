@@ -387,47 +387,48 @@ function sendFile(res, filename) {
 var onRequest = function(req, res) {
 
 	var parsed_url = url_parser.parse(req.url, true);
-	// console.log(parsed_url);
-	 /* we send the files as they come, except for segments for which we send fragment by fragment */
+	var time = getTime();
+
+	// we send the files as they come, except for segments for which we send fragment by fragment
 	if (!fs.existsSync(parsed_url.pathname.slice(1))) {
-		reportMessage(logLevels.INFO, "Request for non existing file: "+ parsed_url.pathname.slice(1) + " at UTC "+getTime());
+		reportMessage(logLevels.INFO, "Request for non existing file: " + parsed_url.pathname.slice(1) + " at UTC " + time);
 		res.statusCode = 404;
 		res.end();
-    return;
-	} else {
-		res.startTime = getTime();
-		reportMessage(logLevels.INFO, "Request for file: "+ parsed_url.pathname.slice(1)  + " at UTC " + res.startTime ) ;
-	}
+		return;
+  }
+
+  res.startTime = time;
+  reportMessage(logLevels.INFO, "Request for file: "+ parsed_url.pathname.slice(1)  + " at UTC " + time) ;
 
 	if (parsed_url.pathname.slice(-3) === "mpd") {
 		res.statusCode = 200;
 		res.setHeader('Content-Type', 'application/dash+xml');
-		res.setHeader('Server-UTC', ''+getTime());
+		res.setHeader('Server-UTC', time);
 		sendFile(res, parsed_url.pathname.slice(1));
     return;
-	} 
+	}
 
   var filename = parsed_url.pathname.slice(1);
   var params = new Parameters(false, state.NONE, res, filename);
-  
+
   if (parsed_url.pathname.slice(-3) === "mp4") {
 		res.statusCode = 200;
 		res.setHeader('Content-Type', 'video/mp4');
-		res.setHeader('Server-UTC', ''+getTime());
-    
+		res.setHeader('Server-UTC', time);
+
 		/* TODO: Check if we should send MP4 files as fragmented files or not */
 		if (sendInitSegmentsFragmented) {
 		  sendFragmentedFile(res, filename, params);
 		  /* Sending the final 0-size chunk because the file won't change anymore */
 		  res.end();
-		  reportMessage(logLevels.INFO, "file "+ parsed_url.pathname.slice(1) + " sent in " + (getTime() - res.startTime) + " ms");
+		  reportMessage(logLevels.INFO, "file "+ parsed_url.pathname.slice(1) + " sent in " + (getTime() - time) + " ms");
 		} else {
 		  sendFile(res, filename);
 		}
 	} else if (parsed_url.pathname.slice(-3) === "m4s") {
 		res.statusCode = 200;
 		res.setHeader('Content-Type', 'application/octet-stream');
-		res.setHeader('Server-UTC', ''+getTime());
+		res.setHeader('Server-UTC', time);
 		if (sendMediaSegmentsFragmented) {
 			sendFragmentedFile(res, filename, params);
 		} else {
