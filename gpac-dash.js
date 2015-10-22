@@ -14,6 +14,7 @@ function usage() {
 	console.log("-chunk-media-segments  send media segments asap using chunked transfer (default no)");
 	console.log("-segment-marker <4cc>  marker for end of segment (default eods)");
 	console.log("-use-watchFile         uses watchFile API instead of watch");
+	console.log("-cors                  add CORS header for all domains")
 
 	console.log();
 }
