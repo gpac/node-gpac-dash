@@ -42,6 +42,12 @@ var logLevels = {
   DEBUG_MAX: 2
 };
 
+var mime_types = {
+	mp4: "video/mp4",
+	m4s: "application/octet-stream",
+	mpd: "application/dash+xml",
+};
+
 function pad(n, width, z) {
   z = z || '0';
   n = n + '';
@@ -387,50 +393,32 @@ function sendFile(res, filename) {
 var onRequest = function(req, res) {
 
 	var parsed_url = url_parser.parse(req.url, true);
-	var time = getTime();
+	var filename = parsed_url.pathname.slice(1);
+	var time = res.startTime = getTime();
 
 	// we send the files as they come, except for segments for which we send fragment by fragment
-	if (!fs.existsSync(parsed_url.pathname.slice(1))) {
-		reportMessage(logLevels.INFO, "Request for non existing file: " + parsed_url.pathname.slice(1) + " at UTC " + time);
+	if (!fs.existsSync(filename)) {
+		reportMessage(logLevels.INFO, "Request for non existing file: " + filename + " at UTC " + time);
 		res.statusCode = 404;
 		res.end();
 		return;
-  }
-
-  res.startTime = time;
-  reportMessage(logLevels.INFO, "Request for file: "+ parsed_url.pathname.slice(1)  + " at UTC " + time) ;
-
-	if (parsed_url.pathname.slice(-3) === "mpd") {
-		res.statusCode = 200;
-		res.setHeader('Content-Type', 'application/dash+xml');
-		res.setHeader('Server-UTC', time);
-		sendFile(res, parsed_url.pathname.slice(1));
-    return;
 	}
 
-  var filename = parsed_url.pathname.slice(1);
-  var params = new Parameters(false, state.NONE, res, filename);
+	reportMessage(logLevels.INFO, "Request for file: " + filename + " at UTC " + time) ;
 
-  if (parsed_url.pathname.slice(-3) === "mp4") {
-		res.statusCode = 200;
-		res.setHeader('Content-Type', 'video/mp4');
-		res.setHeader('Server-UTC', time);
+	var ext = parsed_url.pathname.slice(-3);
 
-		/* TODO: Check if we should send MP4 files as fragmented files or not */
-		if (sendInitSegmentsFragmented) {
-		  sendFragmentedFile(res, filename, params);
-		  /* Sending the final 0-size chunk because the file won't change anymore */
-		  res.end();
-		  reportMessage(logLevels.INFO, "file "+ parsed_url.pathname.slice(1) + " sent in " + (getTime() - time) + " ms");
-		} else {
-		  sendFile(res, filename);
-		}
-	} else if (parsed_url.pathname.slice(-3) === "m4s") {
+	if (ext === "mpd" || ext === "mp4" || ext === "m4s") {
 		res.statusCode = 200;
-		res.setHeader('Content-Type', 'application/octet-stream');
-		res.setHeader('Server-UTC', time);
-		if (sendMediaSegmentsFragmented) {
+		res.setHeader("Content-Type", mime_types[ext]);
+		res.setHeader("Server-UTC", time);
+		// TODO: Check if we should send MP4 files as fragmented files or not
+		if (ext === "mp4" && sendInitSegmentsFragmented || ext === "m4s" && sendMediaSegmentsFragmented) {
+			var params = new Parameters(false, state.NONE, res, filename);
 			sendFragmentedFile(res, filename, params);
+			// Sending the final 0-size chunk because the file won't change anymore
+			res.end();
+			reportMessage(logLevels.INFO, "file " + filename + " sent in " + (getTime() - time) + " ms");
 		} else {
 			sendFile(res, filename);
 		}
