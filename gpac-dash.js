@@ -397,6 +397,10 @@ var onRequest = function(req, res) {
 	var filename = parsed_url.pathname.slice(1);
 	var time = res.startTime = getTime();
 
+	if (allowCors) {
+		res.setHeader("Access-Control-Allow-Origin", "*");
+	}
+
 	// we send the files as they come, except for segments for which we send fragment by fragment
 	if (!fs.existsSync(filename)) {
 		reportMessage(logLevels.INFO, "Request for non existing file: " + filename + " at UTC " + time);
@@ -413,16 +417,15 @@ var onRequest = function(req, res) {
 		res.statusCode = 200;
 		res.setHeader("Content-Type", mime_types[ext]);
 		res.setHeader("Server-UTC", time);
-		if (allowCors) {
-			res.setHeader("Access-Control-Allow-Origin", "*");
-		}
 		// TODO: Check if we should send MP4 files as fragmented files or not
 		if (ext === "mp4" && sendInitSegmentsFragmented || ext === "m4s" && sendMediaSegmentsFragmented) {
 			var params = new Parameters(false, state.NONE, res, filename);
 			sendFragmentedFile(res, filename, params);
 			// Sending the final 0-size chunk because the file won't change anymore
-			res.end();
-			reportMessage(logLevels.INFO, "file " + filename + " sent in " + (getTime() - time) + " ms");
+      if (ext === "mp4") {
+				res.end();
+				reportMessage(logLevels.INFO, "file " + filename + " sent in " + (getTime() - time) + " ms");
+      }
 		} else {
 			sendFile(res, filename);
 		}
