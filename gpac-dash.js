@@ -14,6 +14,7 @@ function usage() {
 	console.log("-chunk-media-segments  send media segments asap using chunked transfer (default no)");
 	console.log("-segment-marker <4cc>  marker for end of segment (default eods)");
 	console.log("-use-watchFile         uses watchFile API instead of watch");
+	console.log("-cors                  add CORS header for all domains")
 
 	console.log();
 }
@@ -31,6 +32,7 @@ var logLevel = 0;
 var sendMediaSegmentsFragmented = false;
 var SEGMENT_MARKER = "eods";
 var sendInitSegmentsFragmented = false;
+var allowCors = false;
 
 var use_watchFile = false;
 var watchOptions = { persistent: true, recursive: false };
@@ -40,6 +42,12 @@ var logLevels = {
   INFO: 0,
   DEBUG_BASIC: 1,
   DEBUG_MAX: 2
+};
+
+var mime_types = {
+	mp4: "video/mp4",
+	m4s: "application/octet-stream",
+	mpd: "application/dash+xml",
 };
 
 function pad(n, width, z) {
@@ -387,49 +395,38 @@ function sendFile(res, filename) {
 var onRequest = function(req, res) {
 
 	var parsed_url = url_parser.parse(req.url, true);
-	// console.log(parsed_url);
-	 /* we send the files as they come, except for segments for which we send fragment by fragment */
-	if (!fs.existsSync(parsed_url.pathname.slice(1))) {
-		reportMessage(logLevels.INFO, "Request for non existing file: "+ parsed_url.pathname.slice(1) + " at UTC "+getTime());
-		res.statusCode = 404;
-		res.end();
-    return;
-	} else {
-		res.startTime = getTime();
-		reportMessage(logLevels.INFO, "Request for file: "+ parsed_url.pathname.slice(1)  + " at UTC " + res.startTime ) ;
+	var filename = parsed_url.pathname.slice(1);
+	var time = res.startTime = getTime();
+
+	if (allowCors) {
+		res.setHeader("Access-Control-Allow-Origin", "*");
 	}
 
-	if (parsed_url.pathname.slice(-3) === "mpd") {
-		res.statusCode = 200;
-		res.setHeader('Content-Type', 'application/dash+xml');
-		res.setHeader('Server-UTC', ''+getTime());
-		sendFile(res, parsed_url.pathname.slice(1));
-    return;
-	} 
+	// we send the files as they come, except for segments for which we send fragment by fragment
+	if (!fs.existsSync(filename)) {
+		reportMessage(logLevels.INFO, "Request for non existing file: " + filename + " at UTC " + time);
+		res.statusCode = 404;
+		res.end();
+		return;
+	}
 
-  var filename = parsed_url.pathname.slice(1);
-  var params = new Parameters(false, state.NONE, res, filename);
-  
-  if (parsed_url.pathname.slice(-3) === "mp4") {
+	reportMessage(logLevels.INFO, "Request for file: " + filename + " at UTC " + time) ;
+
+	var ext = parsed_url.pathname.slice(-3);
+
+	if (ext === "mpd" || ext === "mp4" || ext === "m4s") {
 		res.statusCode = 200;
-		res.setHeader('Content-Type', 'video/mp4');
-		res.setHeader('Server-UTC', ''+getTime());
-    
-		/* TODO: Check if we should send MP4 files as fragmented files or not */
-		if (sendInitSegmentsFragmented) {
-		  sendFragmentedFile(res, filename, params);
-		  /* Sending the final 0-size chunk because the file won't change anymore */
-		  res.end();
-		  reportMessage(logLevels.INFO, "file "+ parsed_url.pathname.slice(1) + " sent in " + (getTime() - res.startTime) + " ms");
-		} else {
-		  sendFile(res, filename);
-		}
-	} else if (parsed_url.pathname.slice(-3) === "m4s") {
-		res.statusCode = 200;
-		res.setHeader('Content-Type', 'application/octet-stream');
-		res.setHeader('Server-UTC', ''+getTime());
-		if (sendMediaSegmentsFragmented) {
+		res.setHeader("Content-Type", mime_types[ext]);
+		res.setHeader("Server-UTC", time);
+		// TODO: Check if we should send MP4 files as fragmented files or not
+		if (ext === "mp4" && sendInitSegmentsFragmented || ext === "m4s" && sendMediaSegmentsFragmented) {
+			var params = new Parameters(false, state.NONE, res, filename);
 			sendFragmentedFile(res, filename, params);
+			// Sending the final 0-size chunk because the file won't change anymore
+      if (ext === "mp4") {
+				res.end();
+				reportMessage(logLevels.INFO, "file " + filename + " sent in " + (getTime() - time) + " ms");
+      }
 		} else {
 			sendFile(res, filename);
 		}
@@ -461,6 +458,8 @@ process.argv.splice(1).forEach(function(val, index, array) {
 		sendMediaSegmentsFragmented = true;
 	} else if (val === "-use-watchFile") {
 		use_watchFile = true;
+	} else if (val === "-cors") {
+		allowCors = true;
 	}
 });
 
