@@ -400,6 +400,7 @@ var onRequest = function(req, res) {
 
 	if (allowCors) {
 		res.setHeader("Access-Control-Allow-Origin", "*");
+		res.setHeader("Access-Control-Expose-Headers", "Date");
 	}
 
 	// we send the files as they come, except for segments for which we send fragment by fragment
