@@ -8,13 +8,14 @@
 function usage() {
 	console.log("node dash-chunked.js [options]");
 	console.log("Basic options");
+	console.log("-h                     displays this message");
 	console.log("-log <level>           sets the log level: info (default) | debug-basic | debug-max");
-	console.log("-ip <IP>               IP address of the server (default 127.0.0.1)");
+	console.log("-ip <IP>               IP address of the server (default: all IP)");
 	console.log("-port <port>           port of the server (default 8000)");
 	console.log("-chunk-media-segments  send media segments asap using chunked transfer (default no)");
 	console.log("-segment-marker <4cc>  marker for end of segment (default eods)");
-	console.log("-use-watchFile         uses watchFile API instead of watch");
 	console.log("-cors                  add CORS header for all domains")
+	console.log("-use-watch             uses watch instead of watchFile (default: false)");
 
 	console.log();
 }
@@ -23,7 +24,7 @@ var fs = require('fs');
 var http = require('http');
 var url_parser = require('url');
 
-var ipaddr = "127.0.0.1";
+var ipaddr = null;
 var port = 8000;
 var logLevel = 0;
 
@@ -34,7 +35,7 @@ var SEGMENT_MARKER = "eods";
 var sendInitSegmentsFragmented = false;
 var allowCors = false;
 
-var use_watchFile = false;
+var use_watchFile = true;
 var watchOptions = { persistent: true, recursive: false };
 var watchFileOptions = { persistent: true, interval: 10 };
 
@@ -442,7 +443,7 @@ process.argv.splice(1).forEach(function(val, index, array) {
 	if (val === "-ip") {
 		ipaddr = array[index + 1];
 	} else if (val === "-port") {
-		port = array[index + 1];
+		port = parseInt(array[index + 1], 10);
 	} else if (val === "-log") {
 		if (array[index + 1] === "info") {
 			logLevel = logLevels.INFO;
@@ -457,12 +458,19 @@ process.argv.splice(1).forEach(function(val, index, array) {
 		SEGMENT_MARKER = array[index + 1];
 	} else if (val === "-chunk-media-segments") {
 		sendMediaSegmentsFragmented = true;
-	} else if (val === "-use-watchFile") {
-		use_watchFile = true;
 	} else if (val === "-cors") {
 		allowCors = true;
+	} else if (val === "-use-watch") {
+		use_watchFile = false;
+	} else if (val === "-h") {
+		usage();
+		process.exit(-1);
 	}
 });
 
-http.createServer(onRequest).listen(port, ipaddr);
-reportMessage(logLevels.INFO, "Server running on " + ipaddr + ":" + port + " in "+(sendMediaSegmentsFragmented ? "low-latency": "normal")+" mode");
+if (ipaddr) {
+	http.createServer(onRequest).listen(port, ipaddr);	
+} else {
+	http.createServer(onRequest).listen(port);
+}
+reportMessage(logLevels.INFO, "Server running on " + (ipaddr ? ipaddr + ":" + port : "port "+ port+ " on all IP")  + " in "+(sendMediaSegmentsFragmented ? "low-latency": "normal")+" mode");
