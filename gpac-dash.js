@@ -411,13 +411,13 @@ var onRequest = function(req, res) {
 
 	// we send the files as they come, except for segments for which we send fragment by fragment
 	if (!fs.existsSync(filename)) {
-		reportMessage(logLevels.INFO, "Request for non existing file: " + filename + " at UTC " + time);
+		reportMessage(logLevels.INFO, "Request for non existing file: '" + filename + "' at UTC " + time);
 		res.statusCode = 404;
 		res.end("GPAC DASH Server (404): The page you requested was not found");
 		return;
 	}
 
-	reportMessage(logLevels.INFO, "Request for file: " + filename + " at UTC " + time) ;
+	reportMessage(logLevels.INFO, "Request for file: '" + filename + "' at UTC " + time) ;
 
 	var ext = parsed_url.pathname.slice(-3);
 
