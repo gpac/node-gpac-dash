@@ -437,6 +437,8 @@ var onRequest = function(req, res) {
 		} else {
 			sendFile(res, filename);
 		}
+	} else {
+		sendFile(res, filename);
 	}
 }
 
