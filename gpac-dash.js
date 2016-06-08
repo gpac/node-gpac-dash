@@ -413,7 +413,7 @@ var onRequest = function(req, res) {
 	if (!fs.existsSync(filename)) {
 		reportMessage(logLevels.INFO, "Request for non existing file: " + filename + " at UTC " + time);
 		res.statusCode = 404;
-		res.end();
+		res.end("GPAC DASH Server (404): The page you requested was not found");
 		return;
 	}
 
@@ -430,10 +430,10 @@ var onRequest = function(req, res) {
 			var params = new Parameters(false, state.NONE, res, filename);
 			sendFragmentedFile(res, filename, params);
 			// Sending the final 0-size chunk because the file won't change anymore
-      if (ext === "mp4") {
+      		if (ext === "mp4") {
 				res.end();
 				reportMessage(logLevels.INFO, "file " + filename + " sent in " + (getTime() - time) + " ms");
-      }
+      		}
 		} else {
 			sendFile(res, filename);
 		}
