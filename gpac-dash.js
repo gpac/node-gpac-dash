@@ -396,6 +396,9 @@ function sendFile(res, filename) {
 }
 
 var onRequest = function(req, res) {
+	var useIndex = false;
+	var notFound = false;
+	var fStat;
 
 	if (request_log_file) {
 		fs.writeFile(request_log_file, req.url);	
@@ -410,11 +413,33 @@ var onRequest = function(req, res) {
 	}
 
 	// we send the files as they come, except for segments for which we send fragment by fragment
-	if (!fs.existsSync(filename)) {
-		reportMessage(logLevels.INFO, "Request for non existing file: '" + filename + "' at UTC " + time);
-		res.statusCode = 404;
-		res.end("GPAC DASH Server (404): The page you requested was not found");
-		return;
+	if (filename === "") {
+		filename = "./";
+	}
+	try {	
+		fStat = fs.statSync(filename);
+	} catch(e) {
+		notFound = true;
+	}
+	if (notFound || !fStat.isFile()) {
+		if (fStat && fStat.isDirectory()) {
+			var fIndexStat;
+			try {	
+				fIndexStat = fs.statSync(filename+require('path').sep+'index.html');
+			} catch (e) {
+				notFound = true;
+			}
+			if (fIndexStat) {
+				notFound = false;
+				useIndex = true;
+			}
+		} 
+		if (notFound) {
+			reportMessage(logLevels.INFO, "Request for non existing file: '" + filename + "' at UTC " + time);
+			res.statusCode = 404;
+			res.end("GPAC DASH Server (404): The page you requested "+filename+" was not found");
+			return;
+		}
 	}
 
 	reportMessage(logLevels.INFO, "Request for file: '" + filename + "' at UTC " + time) ;
@@ -438,7 +463,11 @@ var onRequest = function(req, res) {
 			sendFile(res, filename);
 		}
 	} else {
-		sendFile(res, filename);
+		if (useIndex) {
+			sendFile(res, filename+require('path').sep+'index.html');
+		} else {		
+			sendFile(res, filename);
+		}
 	}
 }
 
