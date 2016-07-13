@@ -14,6 +14,7 @@ function usage() {
 	console.log("-port <port>           port of the server (default 8000)");
 	console.log("-chunk-media-segments  send media segments asap using chunked transfer (default no)");
 	console.log("-segment-marker <4cc>  marker for end of segment (default eods)");
+	console.log("-no-marker-write       strip marker of the generated bitstream (default false)");
 	console.log("-cors                  add CORS header for all domains")
 	console.log("-use-watch             uses watch instead of watchFile (default: false)");
 	console.log("-request-log-file      name of a file in which the latest request is logged (default: no log)");
@@ -34,6 +35,7 @@ var logLevel = 0;
    requires MP4Box or DashCast to use -segment-marker eods */
 var sendMediaSegmentsFragmented = false;
 var SEGMENT_MARKER = "eods";
+var no_marker_write = false;
 var sendInitSegmentsFragmented = false;
 var allowCors = false;
 
@@ -87,13 +89,18 @@ function reportEvent(type, event, filename){
 	reportMessage(logLevels.DEBUG_BASIC, type + " event (" + event + ") on "+filename+" (size "+file_size+")");
 }
 
-function sendAndUpdateBuffer(response, message, fileData, endpos) {
+function sendAndUpdateBuffer(response, message, fileData, endpos, noWrite) {
 	var tmpBuffer;
 	fileData.total_sent += endpos;
 	reportMessage(sendMediaSegmentsFragmented ? logLevels.INFO : logLevels.DEBUG_BASIC, 
 		"File "+fileData.filename+", sending "+message+" data from " + fileData.next_byte_to_send + " to " + (endpos - 1) + " in " + (getTime() - response.startTime) + " ms (total_sent: "+fileData.total_sent+") at utc "+ getTime());
 	tmpBuffer = fileData.buffer.slice(fileData.next_byte_to_send, endpos);
-	response.write(tmpBuffer);
+	if (noWrite) {
+		// patch for Google Chrome not supporting eods boxes
+		// update buffer position but don't send the data
+	} else {
+		response.write(tmpBuffer);
+	}
 	fileData.nb_valid_bytes -= tmpBuffer.length;
 	
 	reportMessage(logLevels.DEBUG_MAX, "Resizing buffer - old length: " + fileData.buffer.length);
@@ -187,7 +194,7 @@ function readFromBufferAndSendBoxes(response, fileData) {
 		
 	if (val1 + val2 + val3 + val4 == SEGMENT_MARKER) {
 		reportMessage(logLevels.DEBUG_BASIC, "**************** End of segment ****************");
-		buffer = sendAndUpdateBuffer(response, "eods", fileData, fileData.next_box_start);
+		buffer = sendAndUpdateBuffer(response, "eods", fileData, fileData.next_box_start, no_marker_write);
 		fileData.endOfSegmentFound = true;
 		fileData.nbMdatInSegment = 0;
 		return "end";
@@ -492,6 +499,8 @@ process.argv.splice(1).forEach(function(val, index, array) {
 		logTiming = true;
 	} else if (val === "-segment-marker") {
 		SEGMENT_MARKER = array[index + 1];
+	} else if (val === "-no-marker-write") {
+		no_marker_write = true;
 	} else if (val === "-chunk-media-segments") {
 		sendMediaSegmentsFragmented = true;
 	} else if (val === "-cors") {
