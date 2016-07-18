@@ -18,6 +18,7 @@ function usage() {
 	console.log("-cors                  add CORS header for all domains")
 	console.log("-use-watch             uses watch instead of watchFile (default: false)");
 	console.log("-quality-log-file      name of a file in which the latest quality requested is logged (default: no log), experimental");
+	console.log("-incoming-log-file     name of a file in which all requests are logged (default: no log)");
 
 	console.log();
 }
@@ -29,6 +30,7 @@ var url_parser = require('url');
 var ipaddr = null;
 var port = 8000;
 var quality_log_file = null;
+var incoming_log_file = null;
 var logLevel = 0;
 
 /* Boolean controlling the sending of segments fragment-by-fragment as HTTP chunks, 
@@ -407,6 +409,9 @@ var onRequest = function(req, res) {
 	var notFound = false;
 	var fStat;
 
+	if (incoming_log_file) {
+		fs.appendFile(incoming_log_file, (new Date())+": Incoming request from "+req.socket.remoteAddress+" for URL: "+req.url+" with headers: "+JSON.stringify(req.headers)+"\n");	
+	} 
 	if (quality_log_file) {
 		fs.writeFile(quality_log_file, req.url);	
 	} 
@@ -509,6 +514,8 @@ process.argv.splice(1).forEach(function(val, index, array) {
 		use_watchFile = false;
 	} else if (val === "-quality-log-file") {
 		quality_log_file = array[index + 1];
+	} else if (val === "-incoming-log-file") {
+		incoming_log_file = array[index + 1];
 	} else if (val === "-h") {
 		usage();
 		process.exit(-1);
