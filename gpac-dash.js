@@ -409,7 +409,7 @@ var onRequest = function(req, res) {
 	var notFound = false;
 	var fStat;
 
-	if (incoming_log_file) {
+	if (incoming_log_file && req.url.endsWith("mpd")) {
 		fs.appendFile(incoming_log_file, (new Date())+": Incoming request from "+req.socket.remoteAddress+" for URL: "+req.url+" with headers: "+JSON.stringify(req.headers)+"\n");	
 	} 
 	if (quality_log_file) {
